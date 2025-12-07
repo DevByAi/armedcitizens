@@ -60,8 +60,8 @@ def main() -> None:
 
     # 2. אתחול בסיס נתונים (init_db פועל כעת)
     try:
-        init_db(DB_URL)
-    except Exception as e:
+    init_db()  # <--- פשוט קוראים לה ללא ארגומנטים
+except Exception as e:
         logger.critical(f"Failed to initialize database: {e}")
         return
 
