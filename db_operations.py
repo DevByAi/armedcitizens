@@ -1,61 +1,36 @@
-import os
+# ==================================
+# קובץ: db_operations.py (מאוחד ומתוקן)
+# ==================================
+from db_models import User, SellPost
+from sqlalchemy.orm import Session
 from contextlib import contextmanager
-from typing import Union, List 
-from datetime import datetime
+from typing import Union, List, Optional
+from datetime import datetime, timedelta
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.ext.declarative import DeclarativeMeta
-from sqlalchemy.exc import SQLAlchemyError
+# פונקציות ה-DBSession מגיעות מ-db_models
+from db_models import get_db_session 
 
-# יש לוודא ש-Base, User ו-SellPost מיובאים נכון מהקובץ db_models
-from db_models import Base, User, SellPost 
-
-
-DB_URL = os.getenv("DB_URL")
-
-if not DB_URL:
-    # הקוד יקרוס כאן אם DB_URL לא מוגדר ב-Render
-    raise ValueError("DB_URL environment variable is not set!")
-
-engine = create_engine(DB_URL, echo=False) 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-def init_db():
-    """יוצר את הטבלאות בבסיס הנתונים."""
-    print("Initializing database...")
-    try:
-        # ודא ש-Base הוא מטא-דאטה תקין
-        if isinstance(Base, DeclarativeMeta):
-            Base.metadata.create_all(bind=engine)
-            print("Database initialization complete.")
-        else:
-            print("Error: Base is not a DeclarativeMeta instance.")
-    except SQLAlchemyError as e:
-        # אם יש כשל בחיבור (הרשאה, SSL), הוא יקרוס כאן
-        print(f"FATAL DB ERROR during init: {e}")
-        raise
 
 @contextmanager
 def get_db() -> Session:
-    db = SessionLocal()
-    try:
+    """קונטקסט מנג'ר ליצירת Session ל-DB וסגירתו אוטומטית."""
+    with get_db_session() as db:
         yield db
-    finally:
-        db.close()
 
 # ----------------------------------------------------------------------
-# פונקציות לניהול משתמשים ואימות (Admin, Ban)
+# פונקציות לניהול משתמשים ואימות
 # ----------------------------------------------------------------------
 
 def get_user(telegram_id: int) -> Union[User, None]:
+    """מחזיר משתמש לפי ID טלגרם, או None אם לא נמצא."""
     with get_db() as db:
         return db.query(User).filter(User.telegram_id == telegram_id).first()
 
 def create_or_update_user(telegram_id: int, **kwargs) -> User:
+    """יוצר או מעדכן משתמש קיים."""
     with get_db() as db:
         user = db.query(User).filter(User.telegram_id == telegram_id).first()
-        if not user:
+        if user is None:
             user = User(telegram_id=telegram_id, **kwargs)
             db.add(user)
         else:
@@ -66,6 +41,7 @@ def create_or_update_user(telegram_id: int, **kwargs) -> User:
         return user
 
 def ban_user_in_db(telegram_id: int):
+    """מסמן משתמש כחסום ומבטל את אישורו."""
     with get_db() as db:
         user = db.query(User).filter(User.telegram_id == telegram_id).first()
         if user:
@@ -73,25 +49,31 @@ def ban_user_in_db(telegram_id: int):
             user.is_approved = False
             db.commit()
 
-# הפונקציה שגרמה לקריסה האחרונה:
-def set_user_admin(telegram_id: int, is_admin: bool):
-    """משנה את סטטוס הניהול של משתמש."""
-    with get_db() as db:
-        user = db.query(User).filter(User.telegram_id == telegram_id).first()
-        if user:
-            user.is_admin = is_admin
-            db.commit()
-
 def get_all_admins() -> List[User]:
     """מחזיר רשימת כל המשתמשים המסומנים כמנהלים."""
     with get_db() as db:
         return db.query(User).filter(User.is_admin == True).all()
 
+def set_user_admin(telegram_id: int, is_admin: bool) -> bool:
+    """משנה את סטטוס הניהול של משתמש. יוצר משתמש אם לא קיים."""
+    with get_db() as db:
+        user = db.query(User).filter(User.telegram_id == telegram_id).first()
+        if user is None:
+            user = User(telegram_id=telegram_id, is_admin=is_admin)
+            db.add(user)
+        else:
+            user.is_admin = is_admin
+        db.commit()
+        return True
+
 def get_all_pending_users() -> List[User]:
     """מחזיר רשימת משתמשים הממתינים לאימות."""
     with get_db() as db:
-        return db.query(User).filter(User.is_approved == False, User.is_banned == False).all()
-
+        return db.query(User).filter(
+            User.is_approved == False,
+            User.is_banned == False
+        ).all()
+    
 
 # ----------------------------------------------------------------------
 # פונקציות לניהול מודעות מכירה
@@ -114,16 +96,86 @@ def get_approved_posts() -> List[SellPost]:
             SellPost.is_approved_by_admin == True
         ).all()
 
-# פונקציות פלייס-הולדר שהייבוא דורש:
-def set_post_relevance(post_id: int, is_relevant: bool):
+def set_post_publication_day(post_id: int, day: int) -> Union[SellPost, None]:
+    """Set the publication day (0-5) for a post."""
+    with get_db() as db:
+        post = db.query(SellPost).filter(SellPost.id == post_id).first()
+        if post:
+            post.publication_day = day
+            db.commit()
+            db.refresh(post)
+        return post
+
+def set_post_relevance(post_id: int, is_relevant: bool) -> Union[SellPost, None]:
     """מעדכן סטטוס רלוונטיות המודעה."""
-    pass
-def get_available_slots_for_day():
-    """פונקציית Placeholder."""
-    return []
-def set_post_time_slot(post_id: int, slot_info: str):
-    """פונקציית Placeholder."""
-    pass
-def set_post_publication_day(post_id: int, day: str):
-    """פונקציית Placeholder."""
-    pass
+    with get_db() as db:
+        post = db.query(SellPost).filter(SellPost.id == post_id).first()
+        if post:
+            post.is_relevant_this_week = is_relevant
+            db.commit()
+            db.refresh(post)
+        return post
+
+def reset_weekly_relevance():
+    """Reset is_relevant_this_week to False for all active posts at start of week."""
+    with get_db() as db:
+        db.query(SellPost).filter(SellPost.is_active == True).update(
+            {SellPost.is_relevant_this_week: False}
+        )
+        db.commit()
+
+def get_posts_needing_relevance_check() -> List[SellPost]:
+    """Get all active approved posts that need relevance confirmation."""
+    with get_db() as db:
+        return db.query(SellPost).filter(
+            SellPost.is_active == True,
+            SellPost.is_approved_by_admin == True
+        ).all()
+
+# Time slot constants - 15 slots from 8am to 10pm
+TIME_SLOTS = list(range(8, 23))  # 8, 9, 10, ..., 22
+
+def get_taken_slots_for_day(day: int) -> List[int]:
+    """Get list of time slots that are already taken for a specific day."""
+    with get_db() as db:
+        posts = db.query(SellPost).filter(
+            SellPost.is_active == True,
+            SellPost.publication_day == day,
+            SellPost.time_slot != None
+        ).all()
+        return [p.time_slot for p in posts if p.time_slot is not None]
+
+
+def get_available_slots_for_day(day: int) -> List[int]:
+    """Get list of available time slots for a specific day."""
+    taken = get_taken_slots_for_day(day)
+    return [slot for slot in TIME_SLOTS if slot not in taken]
+
+
+def set_post_time_slot(post_id: int, time_slot: int) -> Union[SellPost, None]:
+    """Set the time slot for a post."""
+    with get_db() as db:
+        post = db.query(SellPost).filter(SellPost.id == post_id).first()
+        if post:
+            post.time_slot = time_slot
+            db.commit()
+            db.refresh(post)
+        return post
+
+
+def get_posts_for_hour(day: int, hour: int) -> List[SellPost]:
+    """Get posts that should be published at a specific day and hour."""
+    
+    with get_db() as db:
+        one_week_ago = datetime.now() - timedelta(days=7)
+        
+        posts_to_publish = db.query(SellPost).filter(
+            SellPost.is_active == True,
+            SellPost.is_approved_by_admin == True,
+            SellPost.is_relevant_this_week == True,
+            SellPost.publication_day == day,
+            SellPost.time_slot == hour,
+            (SellPost.last_sent_date == None) | (SellPost.last_sent_date < one_week_ago)
+        ).all()
+        
+        return posts_to_publish
