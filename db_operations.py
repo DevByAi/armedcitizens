@@ -1,14 +1,11 @@
-# ====================================
-# קובץ: db_operations.py
-# ====================================
 import os
 from contextlib import contextmanager
-from typing import Union, List  # ייבוא חדש של Union ו-List
+from typing import Union, List  # ייבוא Union ו-List לתאימות ל-Python 3.8
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
-# ייבוא מודלים (נניח ש-User ו-SellPost מגיעים מ-db_models)
+# יש לוודא ש-Base, User ו-SellPost מיובאים נכון מהקובץ db_models
 from db_models import Base, User, SellPost 
 
 
@@ -20,7 +17,7 @@ if not DB_URL:
     raise ValueError("DB_URL environment variable is not set!")
 
 # יצירת מנוע חיבור ל-DB
-engine = create_engine(DB_URL, echo=False)  # מומלץ לכבות echo בייצור
+engine = create_engine(DB_URL, echo=False)
 
 # יצירת מחלקה Session
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -44,7 +41,6 @@ def get_db() -> Session:
 # פונקציות לניהול משתמשים
 # ----------------------------------------------------------------------
 
-# תיקון כאן: החלפת User | None ב- Union[User, None]
 def get_user(telegram_id: int) -> Union[User, None]:
     """מחזיר משתמש לפי ID טלגרם, או None אם לא נמצא."""
     with get_db() as db:
@@ -68,11 +64,19 @@ def create_or_update_user(telegram_id: int, **kwargs) -> User:
         db.refresh(user)
         return user
 
+def ban_user_in_db(telegram_id: int):
+    """מסמן משתמש כחסום ומבטל את אישורו. (פונקציה זו נוספה לפתרון ה-ImportError)."""
+    with get_db() as db:
+        user = db.query(User).filter(User.telegram_id == telegram_id).first()
+        if user:
+            user.is_banned = True
+            user.is_approved = False
+            db.commit()
+
 # ----------------------------------------------------------------------
 # פונקציות לניהול מודעות מכירה
 # ----------------------------------------------------------------------
 
-# תיקון כאן: החלפת List[SellPost] | None ב- Union[List[SellPost], None]
 def get_posts_by_status(status: str) -> Union[List[SellPost], None]:
     """מחזיר מודעות לפי סטטוס."""
     with get_db() as db:
@@ -87,5 +91,3 @@ def create_sell_post(telegram_id: int, text: str) -> SellPost:
         db.commit()
         db.refresh(post)
         return post
-
-# ודא שכל הפונקציות המשתמשות ברמזי סוג מורכבים (Union, List) עודכנו.
