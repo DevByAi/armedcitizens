@@ -15,6 +15,7 @@ from db_models import Base, User, SellPost
 DB_URL = os.getenv("DB_URL")
 
 if not DB_URL:
+    # הקוד יקרוס כאן אם DB_URL לא מוגדר ב-Render
     raise ValueError("DB_URL environment variable is not set!")
 
 engine = create_engine(DB_URL, echo=False) 
@@ -24,12 +25,14 @@ def init_db():
     """יוצר את הטבלאות בבסיס הנתונים."""
     print("Initializing database...")
     try:
+        # ודא ש-Base הוא מטא-דאטה תקין
         if isinstance(Base, DeclarativeMeta):
             Base.metadata.create_all(bind=engine)
             print("Database initialization complete.")
         else:
             print("Error: Base is not a DeclarativeMeta instance.")
     except SQLAlchemyError as e:
+        # אם יש כשל בחיבור (הרשאה, SSL), הוא יקרוס כאן
         print(f"FATAL DB ERROR during init: {e}")
         raise
 
@@ -42,7 +45,7 @@ def get_db() -> Session:
         db.close()
 
 # ----------------------------------------------------------------------
-# פונקציות לניהול משתמשים ואימות
+# פונקציות לניהול משתמשים ואימות (Admin, Ban)
 # ----------------------------------------------------------------------
 
 def get_user(telegram_id: int) -> Union[User, None]:
@@ -70,7 +73,7 @@ def ban_user_in_db(telegram_id: int):
             user.is_approved = False
             db.commit()
 
-# הפונקציה החסרה שגרמה לקריסה הנוכחית:
+# הפונקציה שגרמה לקריסה האחרונה:
 def set_user_admin(telegram_id: int, is_admin: bool):
     """משנה את סטטוס הניהול של משתמש."""
     with get_db() as db:
@@ -91,7 +94,7 @@ def get_all_pending_users() -> List[User]:
 
 
 # ----------------------------------------------------------------------
-# פונקציות לניהול מודעות מכירה (הושלמו קודם)
+# פונקציות לניהול מודעות מכירה
 # ----------------------------------------------------------------------
 
 def add_sell_post(user_id: int, content: str) -> SellPost:
@@ -111,7 +114,7 @@ def get_approved_posts() -> List[SellPost]:
             SellPost.is_approved_by_admin == True
         ).all()
 
-# פונקציות פלייס-הולדר למנוע קריסה של הייבוא:
+# פונקציות פלייס-הולדר שהייבוא דורש:
 def set_post_relevance(post_id: int, is_relevant: bool):
     """מעדכן סטטוס רלוונטיות המודעה."""
     pass
