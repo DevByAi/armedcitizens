@@ -1,0 +1,8 @@
+python-telegram-bot[webhooks,job-queue]==20.8
+python-dotenv
+SQLAlchemy==2.0
+psycopg2-binary
+pytz
+flask[async]
+gunicorn
+asgiref
