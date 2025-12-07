@@ -58,14 +58,14 @@ def main() -> None:
         logger.critical("BOT_TOKEN is missing! Cannot start bot.")
         return
 
-    # 2. אתחול בסיס נתונים (init_db פועל כעת)
+    # 2. אתחול בסיס נתונים (צריך להיות מוזח 4 רווחים)
     try:
-    init_db()  # <--- פשוט קוראים לה ללא ארגומנטים
-except Exception as e:
+        init_db() # <--- ודא שהיא מוזחת 4 רווחים פנימה מ-try
+    except Exception as e:
         logger.critical(f"Failed to initialize database: {e}")
         return
-
-    # 3. בניית האפליקציה
+        
+    # 3. בניית האפליקציה (צריך להיות מוזח 4 רווחים)
     application = Application.builder().token(BOT_TOKEN).build()
     
     # 4. הגדרת Handlers
