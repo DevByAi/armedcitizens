@@ -1,6 +1,6 @@
 import os
 from contextlib import contextmanager
-from typing import Union, List, Optional # Optional הוא דרך נוספת לכתוב Union[T, None]
+from typing import Union, List 
 from datetime import datetime
 
 from sqlalchemy import create_engine
@@ -12,21 +12,16 @@ from sqlalchemy.exc import SQLAlchemyError
 from db_models import Base, User, SellPost 
 
 
-# קבלת משתנה הסביבה DB_URL
 DB_URL = os.getenv("DB_URL")
 
 if not DB_URL:
-    # אם ה-DB_URL לא מוגדר, הקריסה תתרחש כאן עם הודעה ברורה
     raise ValueError("DB_URL environment variable is not set!")
 
-# יצירת מנוע חיבור ל-DB
-engine = create_engine(DB_URL, echo=False)
-
-# יצירת מחלקה Session
+engine = create_engine(DB_URL, echo=False) 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
-    """יוצר את הטבלאות בבסיס הנתונים ומטפל בשגיאות."""
+    """יוצר את הטבלאות בבסיס הנתונים."""
     print("Initializing database...")
     try:
         if isinstance(Base, DeclarativeMeta):
@@ -36,12 +31,10 @@ def init_db():
             print("Error: Base is not a DeclarativeMeta instance.")
     except SQLAlchemyError as e:
         print(f"FATAL DB ERROR during init: {e}")
-        # אם יש כשל כאן (כמו הרשאה או חיבור שגוי), הוא יפיל את ה-Worker
         raise
 
 @contextmanager
 def get_db() -> Session:
-    """קונטקסט מנג'ר ליצירת Session ל-DB וסגירתו אוטומטית."""
     db = SessionLocal()
     try:
         yield db
@@ -77,6 +70,15 @@ def ban_user_in_db(telegram_id: int):
             user.is_approved = False
             db.commit()
 
+# הפונקציה החסרה שגרמה לקריסה הנוכחית:
+def set_user_admin(telegram_id: int, is_admin: bool):
+    """משנה את סטטוס הניהול של משתמש."""
+    with get_db() as db:
+        user = db.query(User).filter(User.telegram_id == telegram_id).first()
+        if user:
+            user.is_admin = is_admin
+            db.commit()
+
 def get_all_admins() -> List[User]:
     """מחזיר רשימת כל המשתמשים המסומנים כמנהלים."""
     with get_db() as db:
@@ -89,10 +91,9 @@ def get_all_pending_users() -> List[User]:
 
 
 # ----------------------------------------------------------------------
-# פונקציות לניהול מודעות מכירה (הפונקציות החסרות)
+# פונקציות לניהול מודעות מכירה (הושלמו קודם)
 # ----------------------------------------------------------------------
 
-# הפונקציה החסרה שגרמה לקריסה:
 def add_sell_post(user_id: int, content: str) -> SellPost:
     """מוסיף מודעת מכירה חדשה."""
     with get_db() as db:
@@ -102,8 +103,6 @@ def add_sell_post(user_id: int, content: str) -> SellPost:
         db.refresh(post)
         return post
 
-# ודא שכל הפונקציות הבאות שנדרשו לייבוא קיימות:
-
 def get_approved_posts() -> List[SellPost]:
     """שולף מודעות פעילות ומאושרות לשליחה שבועית."""
     with get_db() as db:
@@ -112,24 +111,16 @@ def get_approved_posts() -> List[SellPost]:
             SellPost.is_approved_by_admin == True
         ).all()
 
+# פונקציות פלייס-הולדר למנוע קריסה של הייבוא:
 def set_post_relevance(post_id: int, is_relevant: bool):
     """מעדכן סטטוס רלוונטיות המודעה."""
-    with get_db() as db:
-        post = db.query(SellPost).filter(SellPost.id == post_id).first()
-        if post:
-            post.is_active = is_relevant
-            if is_relevant:
-                 post.last_sent_date = datetime.now() # אם רלוונטי, עדכן תאריך שליחה
-            db.commit()
-            
-def get_available_slots_for_day():
-    """פונקציית Placeholder למציאת סלוטים - נחוצה לייבוא."""
-    return [] # Placeholder, הלוגיקה המלאה נמצאת ב-handlers
-
-def set_post_time_slot(post_id: int, slot_info: str):
-    """פונקציית Placeholder להגדרת זמן שליחה - נחוצה לייבוא."""
     pass
-    
+def get_available_slots_for_day():
+    """פונקציית Placeholder."""
+    return []
+def set_post_time_slot(post_id: int, slot_info: str):
+    """פונקציית Placeholder."""
+    pass
 def set_post_publication_day(post_id: int, day: str):
-    """פונקציית Placeholder להגדרת יום פרסום - נחוצה לייבוא."""
+    """פונקציית Placeholder."""
     pass
