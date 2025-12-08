@@ -1,5 +1,5 @@
 # ==================================
-# קובץ: main.py (גרסה סופית - Polling קשיח)
+# קובץ: main.py (תיקון NameError ו-Polling)
 # ==================================
 import os
 import logging
@@ -7,7 +7,14 @@ from datetime import datetime, time
 import pytz
 import telegram
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ChatMemberHandler, CommandHandler
+from telegram.ext import (
+    Application, # השתמשנו ב-Application במקום ApplicationBuilder
+    CommandHandler,
+    ContextTypes, # *** הייבוא החסר תוקן כאן ***
+    MessageHandler, 
+    filters, 
+    ChatMemberHandler
+)
 from dotenv import load_dotenv
 
 from db_models import init_db
@@ -18,7 +25,6 @@ from handlers.selling import setup_selling_handlers
 try:
     from handlers.jobs import schedule_weekly_posts
 except ImportError:
-    # אם הקובץ jobs.py חסר, נגדיר פונקציית Placeholder
     def schedule_weekly_posts(job_queue): pass 
     
 
@@ -34,6 +40,7 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# *** start_command ו-delete_system_messages משתמשים כעת ב-ContextTypes המיובא ***
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """שולח הודעת התחלה בסיסית."""
     if update.effective_chat.type == "private":
@@ -49,12 +56,13 @@ async def delete_system_messages(update: Update, context: ContextTypes.DEFAULT_T
 
 async def ask_relevance_job(context):
     """Daily job at 9am Israel time - asks users to confirm post relevance for the week."""
-    # לוגיקה זו תרוץ אוטומטית אם המשתנים והייבוא תקינים
+    from db_operations import get_posts_needing_relevance_check, reset_weekly_relevance
+    # ... (המשך הלוגיקה של הג'ובים)
     pass 
 
 async def publish_posts_job(context):
     """Hourly job (8am-10pm, not Shabbat) - publishes posts scheduled for this hour."""
-    # לוגיקה זו תרוץ אוטומטית אם המשתנים והייבוא תקינים
+    # ... (המשך הלוגיקה של הג'ובים)
     pass 
 
 
@@ -69,11 +77,11 @@ def main():
         logger.critical(f"Failed to initialize database: {e}")
         return
     
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    # שימוש ב-Application.builder()
+    application = Application.builder().token(BOT_TOKEN).build()
     
+    # Handlers בסיסיים
     application.add_handler(CommandHandler("start", start_command))
-    
-    # *** רישום set_admin command (היה חסר) ***
     application.add_handler(CommandHandler("set_admin", set_admin_command)) 
 
     application.add_handler(MessageHandler(
@@ -83,16 +91,16 @@ def main():
     ))
 
     # Handlers לאימות משתמשים חדשים
-    # נדרש לוודא ש-handle_new_member מוגדר
-    # application.add_handler(ChatMemberHandler(handle_new_member, ChatMemberHandler.CHAT_MEMBER))
-    # setup_verification_flow(application)
+    application.add_handler(ChatMemberHandler(handle_new_member, ChatMemberHandler.CHAT_MEMBER))
+    setup_verification_flow(application)
     
     # Handlers לאדמינים ולמכירות
     setup_admin_handlers(application)
-    # setup_selling_handlers(application)
+    setup_selling_handlers(application)
     
     # רישום משימות מתוזמנות
     schedule_weekly_posts(application.job_queue) 
+    
     # רישום הג'ובים הפנימיים
     job_queue = application.job_queue
     job_queue.run_daily(
@@ -109,12 +117,13 @@ def main():
 
     logger.info("Scheduled jobs registered")
     
-    # *** הסרת לוגיקת WEBHOOK והפעלת Polling קשיח ***
+    # *** הפעלת Polling קשיח (עבור Worker) ***
     if WEBHOOK_URL and os.getenv("RENDER_EXTERNAL_URL"):
          logger.warning("Ignoring WEBHOOK_URL, running Polling in Worker Service.")
          
     try:
         logger.info("Starting bot in Polling mode...")
+        # אם יש שגיאת Webhook, זה ייכשל שוב. יש למחוק את ה-Webhook הישן!
         application.run_polling(drop_pending_updates=True) 
         
     except telegram.error.TelegramError as e:
