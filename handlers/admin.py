@@ -9,7 +9,9 @@ from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes
 )
+# הייבוא הקיים
 from db_operations import get_user, create_or_update_user, ban_user_in_db, get_all_admins, set_user_admin, get_all_pending_users
+# הייבוא הקיים מ-utils
 from handlers.utils import ban_user_globally, set_group_read_only, is_chat_admin, ALL_COMMUNITY_CHATS, is_super_admin, SUPER_ADMIN_ID, build_back_button
 
 logger = logging.getLogger(__name__)
@@ -17,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 # *** הפונקציה החסרה שנדרשת לאתחול ***
 async def set_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """מגדיר משתמש כמנהל (ניתן להפעלה רק על ידי הסופר אדמין)."""
+    """מגדיר משתמש כמנהל (ניתן להפעלה רק על ידי הסופר אדמין).
+    הפקודה נרשמת בנפרד ב-main.py."""
     
     # בדיקה ראשונית: רק בצ'אט פרטי
     if update.effective_chat.type != "private":
@@ -43,7 +46,7 @@ async def set_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     success = set_user_admin(target_user_id, is_admin=True)
     
     if success:
-        # אם הוגדר בהצלחה, נוודא גם שהמשתמש מאושר (במקרה שהוא משתמש חדש)
+        # אם הוגדר בהצלחה, נוודא גם שהמשתמש מאושר
         create_or_update_user(target_user_id, is_approved=True)
         await update.message.reply_text(f"✅ משתמש עם ID: `{target_user_id}` הוגדר בהצלחה כמנהל בסיס הנתונים ואושר!")
     else:
