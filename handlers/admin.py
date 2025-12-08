@@ -1,3 +1,6 @@
+# ==================================
+# קובץ: handlers/admin.py (הוספת set_admin_command החסרה)
+# ==================================
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -11,6 +14,45 @@ from handlers.utils import ban_user_globally, set_group_read_only, is_chat_admin
 
 logger = logging.getLogger(__name__)
 
+
+# *** הפונקציה החסרה שנדרשת לאתחול ***
+async def set_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """מגדיר משתמש כמנהל (ניתן להפעלה רק על ידי הסופר אדמין)."""
+    
+    # בדיקה ראשונית: רק בצ'אט פרטי
+    if update.effective_chat.type != "private":
+        return
+
+    # 1. אימות סופר אדמין
+    if not is_super_admin(update.effective_user.id):
+        await update.message.reply_text("⛔️ אין לך הרשאה להשתמש בפקודה זו (סופר-אדמין בלבד).")
+        return
+
+    # 2. בדיקת ארגומנטים
+    if not context.args or len(context.args) != 1:
+        await update.message.reply_text("⚙️ שימוש: /set_admin <ID משתמש>")
+        return
+
+    try:
+        target_user_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ ID משתמש חייב להיות מספר שלם.")
+        return
+
+    # 3. הגדרה ב-DB
+    success = set_user_admin(target_user_id, is_admin=True)
+    
+    if success:
+        # אם הוגדר בהצלחה, נוודא גם שהמשתמש מאושר (במקרה שהוא משתמש חדש)
+        create_or_update_user(target_user_id, is_approved=True)
+        await update.message.reply_text(f"✅ משתמש עם ID: `{target_user_id}` הוגדר בהצלחה כמנהל בסיס הנתונים ואושר!")
+    else:
+        await update.message.reply_text(f"❌ אירעה שגיאה בהגדרת ID: `{target_user_id}` כמנהל.")
+
+
+# --------------------------------------------------------------------------------------------------
+# שאר הפקודות הקיימות שלך (שלא שונו)
+# --------------------------------------------------------------------------------------------------
 
 async def approve_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin command to approve a user: /approve <user_id>"""
@@ -142,6 +184,7 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if is_super_admin(user_id):
         help_text += """
 פקודות מנהל ראשי:
+/set_admin <user_id> - הגדרת אדמין ראשוני (שימוש חד-פעמי)
 /addadmin <user_id> - הוספת מנהל לצוות
 /removeadmin <user_id> - הסרת מנהל מהצוות
 /listadmins - רשימת כל המנהלים
@@ -337,7 +380,7 @@ async def pending_users_command(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 def setup_admin_handlers(application: Application):
-    """Sets up all admin command handlers."""
+    """Sets up all admin command handlers. (Existing code)"""
     application.add_handler(CommandHandler("approve", approve_user_command))
     application.add_handler(CommandHandler("ban", ban_user_command))
     application.add_handler(CommandHandler("lock", lock_group_command))
