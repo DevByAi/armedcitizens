@@ -1,5 +1,5 @@
 # ==================================
-# קובץ: handlers/selling.py (מלא)
+# קובץ: handlers/selling.py (מלא ומתוקן)
 # ==================================
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -9,11 +9,13 @@ from telegram.ext import (
     ContextTypes,
     MessageHandler,
     filters,
-    CallbackQueryHandler
+    CallbackQueryHandler,
+    # *** הוספת CommandHandler החסר ***
+    CommandHandler 
 )
 
 from db_operations import add_sell_post, get_user_posts, get_sell_post, update_sell_post, delete_sell_post
-from handlers.utils import is_user_approved, ALL_COMMUNITY_CHATS, ADMIN_CHAT_ID, add_back_button
+from handlers.utils import is_user_approved, ALL_COMMUNITY_CHATS, ADMIN_CHAT_ID, build_main_menu, add_back_button
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +67,8 @@ async def sell_receive_content(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         await context.bot.send_message(
             chat_id=int(ADMIN_CHAT_ID),
-            text=message_to_admin,
+            photo=post.license_photo_id, # נניח שהפוסט יכול לכלול תמונה מ-user_data
+            caption=message_to_admin,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     except Exception as e:
@@ -74,7 +77,7 @@ async def sell_receive_content(update: Update, context: ContextTypes.DEFAULT_TYP
     # 3. תגובה למשתמש
     await update.message.reply_text(
         f"✅ המודעה נשלחה לאישור מנהל (Post ID: {post.id}). תקבל הודעה לאחר אישור.",
-        reply_markup=build_main_menu()
+        reply_markup=build_main_menu() # מחזיר את המקלדת הראשית
     )
     
     return ConversationHandler.END
@@ -116,7 +119,7 @@ async def edit_my_posts_start(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         ])
         
-    keyboard = add_back_button(keyboard)
+    keyboard = add_back_button(keyboard) # שימוש בפונקציה מ-utils
 
     await update.message.reply_text(
         text=text,
@@ -136,12 +139,11 @@ def setup_selling_handlers(application: Application):
         },
         fallbacks=[CommandHandler('cancel', sell_cancel)],
         allow_reentry=True,
-        per_user=False # יכול להיות פאלס מכיוון שזו שיחה קצרה
+        per_user=False
     )
     application.add_handler(sell_conv_handler)
     
     # 2. עריכת מודעה קיימת (שיחה נפרדת או כניסה מתוך callback)
-    # נניח שפקודה /edit פותחת את תהליך העריכה
     application.add_handler(CommandHandler("editposts", edit_my_posts_start))
 
     logger.info("Selling handlers setup complete")
