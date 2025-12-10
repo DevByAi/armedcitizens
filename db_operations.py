@@ -1,10 +1,10 @@
 # ==================================
-# קובץ: db_operations.py (מתוקן ומלא)
+# קובץ: db_operations.py (מלא - משתמשים + מכירות + אדמין)
 # ==================================
 import logging
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.exc import SQLAlchemyError
-from db_models import engine, User, SellPost  # וודא ש-SellPost קיים ב-db_models שלך
+from db_models import engine, User, SellPost 
 
 # יצירת Session מנוהל
 session_factory = sessionmaker(bind=engine)
@@ -14,7 +14,9 @@ logger = logging.getLogger(__name__)
 def get_session():
     return Session()
 
-# --- פונקציות משתמשים (Users) ---
+# ---------------------------------------------------------
+# 👤 ניהול משתמשים (Users)
+# ---------------------------------------------------------
 
 def create_or_update_user(telegram_id, username=None, full_name=None, is_approved=None):
     session = Session()
@@ -44,7 +46,6 @@ def get_user(telegram_id):
         session.close()
 
 def get_all_pending_users():
-    """מחזיר רשימה של כל המשתמשים שממתינים לאישור"""
     session = Session()
     try:
         return session.query(User).filter_by(is_approved=False, is_banned=False).all()
@@ -52,7 +53,6 @@ def get_all_pending_users():
         session.close()
 
 def get_all_admins():
-    """מחזיר רשימה של כל האדמינים"""
     session = Session()
     try:
         return session.query(User).filter_by(is_admin=True).all()
@@ -87,14 +87,91 @@ def ban_user_in_db(telegram_id):
     finally:
         session.close()
 
-# --- פונקציות מודעות מכירה (Sell Posts) ---
+# ---------------------------------------------------------
+# 📦 ניהול מודעות מכירה (Sell Posts) - החלק שהיה חסר
+# ---------------------------------------------------------
 
-def get_pending_sell_posts():
-    """מחזיר את כל מודעות המכירה שממתינות לאישור"""
+def add_sell_post(user_id, description, price, contact_info, image_id):
+    """יוצר מודעת מכירה חדשה"""
     session = Session()
     try:
-        # מניח שיש עמודה is_approved בטבלת SellPost
-        return session.query(SellPost).filter_by(is_approved=False).all()
+        new_post = SellPost(
+            user_id=user_id,
+            description=description,
+            price=price,
+            contact_info=contact_info,
+            image_id=image_id,
+            is_approved=False, # ברירת מחדל: ממתין לאישור
+            status='active'
+        )
+        session.add(new_post)
+        session.commit()
+        # מרעננים כדי לקבל את ה-ID החדש
+        session.refresh(new_post)
+        return new_post
+    except SQLAlchemyError as e:
+        session.rollback()
+        logger.error(f"Error adding sell post: {e}")
+        return None
+    finally:
+        session.close()
+
+def get_sell_post(post_id):
+    """שולף מודעה לפי ID"""
+    session = Session()
+    try:
+        return session.query(SellPost).filter_by(id=post_id).first()
+    finally:
+        session.close()
+
+def get_user_posts(user_id):
+    """שולף את כל המודעות של משתמש מסוים"""
+    session = Session()
+    try:
+        return session.query(SellPost).filter_by(user_id=user_id).all()
+    finally:
+        session.close()
+
+def update_sell_post(post_id, **kwargs):
+    """מעדכן שדות במודעה קיימת"""
+    session = Session()
+    try:
+        post = session.query(SellPost).filter_by(id=post_id).first()
+        if post:
+            for key, value in kwargs.items():
+                if hasattr(post, key):
+                    setattr(post, key, value)
+            session.commit()
+            return True
+        return False
+    except SQLAlchemyError:
+        session.rollback()
+        return False
+    finally:
+        session.close()
+
+def delete_sell_post(post_id):
+    """מוחק מודעה (או מסמן כ-deleted)"""
+    session = Session()
+    try:
+        post = session.query(SellPost).filter_by(id=post_id).first()
+        if post:
+            session.delete(post) # מחיקה פיזית
+            # או: post.status = 'deleted' אם רוצים לשמור היסטוריה
+            session.commit()
+            return True
+        return False
+    except SQLAlchemyError:
+        session.rollback()
+        return False
+    finally:
+        session.close()
+
+def get_pending_sell_posts():
+    """עבור אדמין: שליפת כל המודעות הממתינות לאישור"""
+    session = Session()
+    try:
+        return session.query(SellPost).filter_by(is_approved=False, status='active').all()
     except Exception as e:
         logger.error(f"Error fetching pending posts: {e}")
         return []
@@ -102,14 +179,12 @@ def get_pending_sell_posts():
         session.close()
 
 def get_approved_posts():
-    """מחזיר את כל מודעות המכירה המאושרות"""
+    """שליפת כל המודעות המאושרות"""
     session = Session()
     try:
-        return session.query(SellPost).filter_by(is_approved=True).all()
+        return session.query(SellPost).filter_by(is_approved=True, status='active').all()
     except Exception as e:
         logger.error(f"Error fetching approved posts: {e}")
         return []
     finally:
         session.close()
-
-# הערה: אם אתה משתמש במודל אחר למודעות (לא SellPost), שנה את השם בהתאם.
