@@ -1,14 +1,13 @@
 # ==================================
-# קובץ: handlers/utils.py (מלא וסופי - כולל כל ה-Imports החסרים)
+# קובץ: handlers/utils.py (מלא וסופי - מכיל את כל ה-Imports החסרים)
 # ==================================
 import os
 import logging
 from telegram import Bot, ChatPermissions, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from typing import List
+from typing import List, Union
 
-# נדרש לוודא שייבוא זה תקין
-from db_operations import get_user, ban_user_in_db # get_user חיוני לבדיקה
+from db_operations import get_user, ban_user_in_db, get_all_admins, get_all_pending_users, get_pending_sell_posts
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +32,16 @@ def is_super_admin(user_id: int) -> bool:
     """מחזיר True אם המשתמש הוא הסופר-אדמין."""
     return user_id == SUPER_ADMIN_ID
 
-# *** פונקציה חסרה שנדרשת על ידי selling.py ***
 def is_user_approved(user_id: int) -> bool:
-    """מחזיר True אם המשתמש מאושר ואינו חסום."""
+    """מחזיר True אם המשתמש מאושר ואינו חסום (נדרש על ידי selling.py)."""
     user = get_user(user_id)
-    # משתמש מאושר רק אם הוא קיים, is_approved=True, ו-is_banned=False
     return user is not None and user.is_approved and not user.is_banned
 
-
+def is_user_admin(user_id: int) -> bool:
+    """בודק אם המשתמש הוא אדמין רגיל או סופר אדמין."""
+    user = get_user(user_id)
+    return (user is not None and user.is_admin) or is_super_admin(user_id)
+    
 async def is_chat_admin(chat: Update.effective_chat, user: Update.effective_user) -> bool:
     """בדיקה אם המשתמש הוא אדמין בצ'אט הנתון (כולל אדמין DB)."""
     user_db = get_user(user.id)
@@ -58,7 +59,7 @@ async def is_chat_admin(chat: Update.effective_chat, user: Update.effective_user
 
 # --- פעולות על הרשאות ---
 async def restrict_user_permissions(chat_id: int, user_id: int):
-    """מגביל משתמש להודעות טקסט בלבד ומונע מדיה (נדרש על ידי verification.py)."""
+    """מגביל משתמש להודעות טקסט בלבד ומונע מדיה."""
     permissions = ChatPermissions(
         can_send_messages=False,
         can_send_media_messages=False,
@@ -133,26 +134,38 @@ async def check_user_status_and_reply(message: Update.message, context: ContextT
         
     await message.reply_text(status_text)
     
-# *** תיקון: build_back_button (שני שמות אפשריים) ***
 def build_back_button():
-    """בונה מקלדת עם כפתור חזרה בסיסי (כדי לתמוך ב-verification.py)."""
+    """בונה מקלדת עם כפתור חזרה בסיסי (נדרש על ידי verification.py)."""
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("חזור לתפריט הראשי", callback_data="main_menu_return")]
     ])
 
 def add_back_button(keyboard: List[List[InlineKeyboardButton]]) -> List[List[InlineKeyboardButton]]:
-    """מוסיף כפתור חזרה לתפריט ראשי למקלדת נתונה (כדי לתמוך בקריאות אחרות)."""
+    """מוסיף כפתור חזרה לתפריט ראשי למקלדת נתונה (נדרש על ידי selling.py)."""
     back_button = [InlineKeyboardButton("חזור לתפריט הראשי", callback_data="main_menu_return")]
     keyboard.append(back_button)
     return keyboard
 
-def build_main_menu():
-    """בונה את המקלדת הצפה הראשית."""
+def build_main_menu_for_user(user_id: int) -> InlineKeyboardMarkup:
+    """מחזיר את המקלדת הצפה הראשית, עם כפתורי ניהול אם המשתמש הוא אדמין."""
+    
     keyboard = [
         [InlineKeyboardButton("📦 מכירה חדשה", callback_data="start_sell_flow")],
         [InlineKeyboardButton("👤 מצב אימות", callback_data="check_verification_status")],
         [InlineKeyboardButton("❓ עזרה ופקודות", callback_data="help_menu_main")]
     ]
+    
+    if is_user_admin(user_id):
+        pending_users = len(get_all_pending_users())
+        pending_posts = len(get_pending_sell_posts())
+        
+        keyboard.append([
+            InlineKeyboardButton(f"🚨 אישור ממתינים ({pending_users} / {pending_posts})", callback_data="admin_pending_menu")
+        ])
+        keyboard.append([
+            InlineKeyboardButton("📊 סטטיסטיקות וניהול", callback_data="admin_stats_menu")
+        ])
+        
     return InlineKeyboardMarkup(keyboard)
 
 def get_menu_text() -> str:
