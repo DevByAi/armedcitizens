@@ -2,19 +2,19 @@
 # קובץ: handlers/verification.py (מלא ומתוקן)
 # ==================================
 import logging
+import telegram
 from telegram import Update, ForceReply, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
-    # *** הייבוא החסר תוקן כאן: ***
     ConversationHandler,
     ContextTypes,
     MessageHandler,
     filters,
     CallbackQueryHandler,
     ChatMemberHandler,
-    CommandHandler # *** הפונקציה החסרה ***
+    CommandHandler # *** הייבוא החסר תוקן כאן ***
 )
-import telegram
+
 
 from db_operations import get_user, create_or_update_user
 from handlers.utils import (
@@ -23,7 +23,8 @@ from handlers.utils import (
     get_menu_text, 
     ALL_COMMUNITY_CHATS,
     ADMIN_CHAT_ID,
-    add_back_button
+    add_back_button,
+    build_back_button # *** פתרון ImportError סופי ***
 )
 
 logger = logging.getLogger(__name__)
@@ -35,10 +36,7 @@ AWAITING_NAME, AWAITING_PHONE, AWAITING_LICENSE = range(3)
 # --- Handlers ---
 
 async def handle_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    מטפל בהצטרפות משתמשים חדשים לקבוצות הקהילה.
-    מגביל את המשתמש ושולח הודעת ברוכים הבאים בפרטי.
-    """
+    """מטפל בהצטרפות משתמשים חדשים לקבוצות הקהילה."""
     chat_member = update.chat_member
     new_member = chat_member.new_chat_member
     
@@ -149,7 +147,7 @@ async def verify_license(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # 3. תגובה למשתמש
     await update.message.reply_text(
         "✅ הפרטים נשלחו בהצלחה! אנא המתן לאישור של מנהל הקהילה (עד 24 שעות).",
-        reply_markup=build_main_menu() # מחזיר את המקלדת הראשית
+        reply_markup=build_main_menu_for_user(user_id) # מחזיר את המקלדת הראשית
     )
     
     # ניקוי נתוני השיחה
@@ -161,7 +159,7 @@ async def verify_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     """מסיים את השיחה עקב ביטול."""
     await update.message.reply_text(
         "🔄 האימות בוטל.",
-        reply_markup=build_main_menu()
+        reply_markup=build_main_menu_for_user(update.effective_user.id)
     )
     context.user_data.clear()
     return ConversationHandler.END
