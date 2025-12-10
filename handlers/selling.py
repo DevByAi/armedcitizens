@@ -10,12 +10,11 @@ from telegram.ext import (
     MessageHandler,
     filters,
     CallbackQueryHandler,
-    # *** הוספת CommandHandler החסר ***
-    CommandHandler 
+    CommandHandler # *** הייבוא החסר תוקן כאן ***
 )
 
 from db_operations import add_sell_post, get_user_posts, get_sell_post, update_sell_post, delete_sell_post
-from handlers.utils import is_user_approved, ALL_COMMUNITY_CHATS, ADMIN_CHAT_ID, build_main_menu, add_back_button
+from handlers.utils import is_user_approved, ALL_COMMUNITY_CHATS, ADMIN_CHAT_ID, build_main_menu_for_user, add_back_button
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +66,6 @@ async def sell_receive_content(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         await context.bot.send_message(
             chat_id=int(ADMIN_CHAT_ID),
-            photo=post.license_photo_id, # נניח שהפוסט יכול לכלול תמונה מ-user_data
             caption=message_to_admin,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
@@ -77,7 +75,7 @@ async def sell_receive_content(update: Update, context: ContextTypes.DEFAULT_TYP
     # 3. תגובה למשתמש
     await update.message.reply_text(
         f"✅ המודעה נשלחה לאישור מנהל (Post ID: {post.id}). תקבל הודעה לאחר אישור.",
-        reply_markup=build_main_menu() # מחזיר את המקלדת הראשית
+        reply_markup=build_main_menu_for_user(user_id) # מחזיר את המקלדת הראשית
     )
     
     return ConversationHandler.END
@@ -87,7 +85,7 @@ async def sell_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     """מסיים את השיחה עקב ביטול."""
     await update.message.reply_text(
         "🔄 יצירת המודעה בוטלה.",
-        reply_markup=build_main_menu()
+        reply_markup=build_main_menu_for_user(update.effective_user.id)
     )
     return ConversationHandler.END
 
