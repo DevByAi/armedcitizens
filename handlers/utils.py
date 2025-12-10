@@ -1,5 +1,5 @@
 # ==================================
-# קובץ: handlers/utils.py (מלא וסופי - תיקון Naming של כפתור החזרה)
+# קובץ: handlers/utils.py (מלא וסופי - כולל get_menu_text)
 # ==================================
 import os
 import logging
@@ -27,7 +27,7 @@ DAY_NAMES = {
     0: "ראשון", 1: "שני", 2: "שלישי", 3: "רביעי", 4: "חמישי", 5: "שישי"
 }
 
-# --- בדיקות הרשאה ופעולות (שאר הקוד נשאר זהה) ---
+# --- בדיקות הרשאה ופעולות ---
 def is_super_admin(user_id: int) -> bool:
     return user_id == SUPER_ADMIN_ID
 
@@ -43,7 +43,6 @@ async def is_chat_admin(chat: Update.effective_chat, user: Update.effective_user
         pass
     return is_super_admin(user.id)
 
-# --- פעולות על הרשאות ---
 async def restrict_user_permissions(chat_id: int, user_id: int):
     permissions = ChatPermissions(
         can_send_messages=False,
@@ -89,6 +88,7 @@ async def set_group_read_only(bot: Bot, chat_id: int, is_read_only: bool) -> boo
             can_send_messages=True,
             can_send_media_messages=True
         )
+        
     try:
         await bot.set_chat_permissions(chat_id, permissions)
         return True
@@ -98,8 +98,10 @@ async def set_group_read_only(bot: Bot, chat_id: int, is_read_only: bool) -> boo
 
 # --- פונקציות לתמיכה במקלדת ---
 async def check_user_status_and_reply(message: Update.message, context: ContextTypes.DEFAULT_TYPE):
+    """בדיקת סטטוס אימות ושליחת תגובה מתאימה (עבור המקלדת הצפה)."""
     user_id = message.chat_id
     user = get_user(user_id)
+    
     if not user:
         status_text = "❌ עדיין לא התחלת את תהליך האימות. אנא המתן עד שתשלח הודעה ראשונה לאחת מקבוצות הקהילה."
     elif user.is_banned:
@@ -108,22 +110,14 @@ async def check_user_status_and_reply(message: Update.message, context: ContextT
         status_text = "✅ אושר! יש לך הרשאות כתיבה מלאות."
     else:
         status_text = "⏳ ממתין לאישור מנהל. פרטיך נשלחו לבדיקה."
+        
     await message.reply_text(status_text)
     
-# *** תיקון: הפונקציה ש verification.py מצפה לה ***
-def build_back_button():
-    """בונה מקלדת עם כפתור חזרה בסיסי (בצורה של InlineKeyboardMarkup)."""
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("חזור לתפריט הראשי", callback_data="main_menu_return")]
-    ])
-
-# *** תיקון: פונקציה נוספת אם verification.py מצפה ל-add ***
 def add_back_button(keyboard: List[List[InlineKeyboardButton]]) -> List[List[InlineKeyboardButton]]:
     """מוסיף כפתור חזרה לתפריט ראשי למקלדת נתונה."""
     back_button = [InlineKeyboardButton("חזור לתפריט הראשי", callback_data="main_menu_return")]
     keyboard.append(back_button)
     return keyboard
-
 
 def build_main_menu():
     """בונה את המקלדת הצפה הראשית."""
@@ -133,3 +127,8 @@ def build_main_menu():
         [InlineKeyboardButton("❓ עזרה ופקודות", callback_data="help_menu_main")]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+# *** תיקון: הפונקציה החסרה שנדרשת על ידי verification.py ***
+def get_menu_text() -> str:
+    """מחזיר את טקסט התפריט הראשי לשליחה."""
+    return "ברוך הבא לתפריט הראשי. בחר פעולה:"
