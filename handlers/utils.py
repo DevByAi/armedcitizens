@@ -1,5 +1,5 @@
 # ==================================
-# קובץ: handlers/utils.py (מלא וסופי - כולל is_user_approved)
+# קובץ: handlers/utils.py (מלא וסופי - כולל כל ה-Imports החסרים)
 # ==================================
 import os
 import logging
@@ -7,6 +7,7 @@ from telegram import Bot, ChatPermissions, Update, InlineKeyboardButton, InlineK
 from telegram.ext import ContextTypes
 from typing import List
 
+# נדרש לוודא שייבוא זה תקין
 from db_operations import get_user, ban_user_in_db # get_user חיוני לבדיקה
 
 logger = logging.getLogger(__name__)
@@ -32,10 +33,11 @@ def is_super_admin(user_id: int) -> bool:
     """מחזיר True אם המשתמש הוא הסופר-אדמין."""
     return user_id == SUPER_ADMIN_ID
 
-# *** תיקון: הפונקציה החסרה שנדרשת על ידי selling.py ***
+# *** פונקציה חסרה שנדרשת על ידי selling.py ***
 def is_user_approved(user_id: int) -> bool:
     """מחזיר True אם המשתמש מאושר ואינו חסום."""
     user = get_user(user_id)
+    # משתמש מאושר רק אם הוא קיים, is_approved=True, ו-is_banned=False
     return user is not None and user.is_approved and not user.is_banned
 
 
@@ -56,7 +58,7 @@ async def is_chat_admin(chat: Update.effective_chat, user: Update.effective_user
 
 # --- פעולות על הרשאות ---
 async def restrict_user_permissions(chat_id: int, user_id: int):
-    """מגביל משתמש להודעות טקסט בלבד ומונע מדיה."""
+    """מגביל משתמש להודעות טקסט בלבד ומונע מדיה (נדרש על ידי verification.py)."""
     permissions = ChatPermissions(
         can_send_messages=False,
         can_send_media_messages=False,
@@ -131,8 +133,15 @@ async def check_user_status_and_reply(message: Update.message, context: ContextT
         
     await message.reply_text(status_text)
     
+# *** תיקון: build_back_button (שני שמות אפשריים) ***
+def build_back_button():
+    """בונה מקלדת עם כפתור חזרה בסיסי (כדי לתמוך ב-verification.py)."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("חזור לתפריט הראשי", callback_data="main_menu_return")]
+    ])
+
 def add_back_button(keyboard: List[List[InlineKeyboardButton]]) -> List[List[InlineKeyboardButton]]:
-    """מוסיף כפתור חזרה לתפריט ראשי למקלדת נתונה."""
+    """מוסיף כפתור חזרה לתפריט ראשי למקלדת נתונה (כדי לתמוך בקריאות אחרות)."""
     back_button = [InlineKeyboardButton("חזור לתפריט הראשי", callback_data="main_menu_return")]
     keyboard.append(back_button)
     return keyboard
