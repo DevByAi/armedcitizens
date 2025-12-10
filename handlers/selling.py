@@ -10,7 +10,8 @@ from telegram.ext import (
     MessageHandler,
     filters,
     CallbackQueryHandler,
-    CommandHandler # *** הייבוא החסר תוקן כאן ***
+    # *** הייבוא החסר תוקן כאן: ***
+    CommandHandler 
 )
 
 from db_operations import add_sell_post, get_user_posts, get_sell_post, update_sell_post, delete_sell_post
