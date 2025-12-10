@@ -76,9 +76,11 @@ async def handle_main_keyboard_callback(update: Update, context: ContextTypes.DE
         await context.bot.send_message(chat_id=query.message.chat_id, text="עזרה ראשית...")
 
     elif query.data == "admin_pending_menu":
+        # לוגיקה לטיפול בתפריט הממתינים (צריך להיות ב-handlers/admin.py)
         await context.bot.send_message(chat_id=query.message.chat_id, text="תפריט ממתינים נפתח.")
     
     elif query.data == "admin_stats_menu":
+        # לוגיקה לטיפול בסטטיסטיקות (צריך להיות ב-handlers/admin.py)
         await context.bot.send_message(chat_id=query.message.chat_id, text="תפריט סטטיסטיקות נפתח.")
     
     elif query.data == "main_menu_return":
