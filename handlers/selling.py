@@ -10,8 +10,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
     CallbackQueryHandler,
-    # *** הייבוא החסר תוקן כאן: ***
-    CommandHandler 
+    CommandHandler
 )
 
 from db_operations import add_sell_post, get_user_posts, get_sell_post, update_sell_post, delete_sell_post
@@ -46,7 +45,7 @@ async def sell_receive_content(update: Update, context: ContextTypes.DEFAULT_TYP
     post = add_sell_post(user_id, post_content)
     
     # 2. שליחה לאדמין לאישור
-    user = context.bot.get_chat_member(user_id, user_id).user
+    user = await context.bot.get_chat_member(user_id, user_id).user
     
     message_to_admin = f"""📦 מודעת מכירה חדשה ממתינה:
     
