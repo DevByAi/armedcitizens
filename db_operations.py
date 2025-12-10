@@ -1,5 +1,5 @@
 # ==================================
-# קובץ: db_operations.py (הוספת get_user_posts)
+# קובץ: db_operations.py (מלא)
 # ==================================
 from db_models import User, SellPost, get_db_session
 from sqlalchemy.orm import Session
@@ -15,7 +15,7 @@ def get_db() -> Session:
         yield db
 
 # ----------------------------------------------------------------------
-# פונקציות לניהול משתמשים ואימות (כפי שנדרש)
+# פונקציות לניהול משתמשים ואימות
 # ----------------------------------------------------------------------
 
 def get_user(telegram_id: int) -> Union[User, None]:
@@ -66,7 +66,7 @@ def get_all_pending_users() -> List[User]:
         ).all()
 
 # ----------------------------------------------------------------------
-# פונקציות לניהול מודעות מכירה (הוספת החסרות)
+# פונקציות לניהול מודעות מכירה 
 # ----------------------------------------------------------------------
 
 def add_sell_post(user_id: int, content: str) -> SellPost:
@@ -77,9 +77,8 @@ def add_sell_post(user_id: int, content: str) -> SellPost:
         db.refresh(post)
         return post
 
-# *** התיקון הקריטי: הפונקציה שחסרה ב-selling.py ***
 def get_user_posts(user_id: int) -> List[SellPost]:
-    """שולף את כל המודעות הפעילות של משתמש נתון."""
+    """שולף את כל המודעות הפעילות של משתמש נתון (נדרש על ידי selling.py)."""
     with get_db() as db:
         return db.query(SellPost).filter(
             SellPost.user_id == user_id,
@@ -113,4 +112,10 @@ def delete_sell_post(post_id: int) -> bool:
             return True
         return False
 
-# ... (אם חסרות פונקציות אחרות כמו get_pending_sell_posts, עליך להוסיף אותן)
+def get_pending_sell_posts() -> List[SellPost]:
+    """שולף את כל המודעות הממתינות לאישור אדמין."""
+    with get_db() as db:
+        return db.query(SellPost).filter(
+            SellPost.is_active == True,
+            SellPost.is_approved_by_admin == False
+        ).all()
