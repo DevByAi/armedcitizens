@@ -1,16 +1,18 @@
 # ==================================
-# קובץ: handlers/verification.py (מלא)
+# קובץ: handlers/verification.py (מלא ומתוקן)
 # ==================================
 import logging
 from telegram import Update, ForceReply, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
+    # *** הייבוא החסר תוקן כאן: ***
     ConversationHandler,
     ContextTypes,
     MessageHandler,
     filters,
     CallbackQueryHandler,
-    ChatMemberHandler
+    ChatMemberHandler,
+    CommandHandler # *** הפונקציה החסרה ***
 )
 import telegram
 
