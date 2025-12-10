@@ -12,19 +12,19 @@ from telegram.ext import (
     filters,
     CallbackQueryHandler,
     ChatMemberHandler,
-    CommandHandler # *** הייבוא החסר תוקן כאן ***
+    CommandHandler # הייבוא תוקן
 )
 
 
 from db_operations import get_user, create_or_update_user
 from handlers.utils import (
     restrict_user_permissions, 
-    build_main_menu, 
+    build_main_menu_for_user, # השם תוקן
     get_menu_text, 
     ALL_COMMUNITY_CHATS,
     ADMIN_CHAT_ID,
     add_back_button,
-    build_back_button # *** פתרון ImportError סופי ***
+    build_back_button # הייבוא תוקן
 )
 
 logger = logging.getLogger(__name__)
@@ -182,4 +182,5 @@ def setup_verification_flow(application: Application):
     )
     
     application.add_handler(conv_handler)
+    application.add_handler(ChatMemberHandler(handle_new_member, ChatMemberHandler.CHAT_MEMBER))
     logger.info("Verification flow setup complete")
