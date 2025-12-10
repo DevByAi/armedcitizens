@@ -1,5 +1,5 @@
 # ==================================
-# קובץ: main.py (תיקון ייבוא סופי)
+# קובץ: main.py (מכיל את כל Setup Handlers ו-Polling)
 # ==================================
 import os
 import logging
@@ -18,11 +18,11 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 
+# ייבוא קריטי: db_models, verification, admin, selling
 from db_models import init_db
 from handlers.verification import handle_new_member, setup_verification_flow
 from handlers.admin import setup_admin_handlers, set_admin_command 
 from handlers.selling import setup_selling_handlers
-# *** הוספת build_main_menu לייבוא ***
 from handlers.utils import check_user_status_and_reply, build_main_menu 
 
 # דרוש ייבוא של הפונקציה schedule_weekly_posts
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 
 # ----------------------------------------------------------------------
-# Handlers
+# Handlers בסיסיים
 # ----------------------------------------------------------------------
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -54,7 +54,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_chat.type == "private":
         await update.message.reply_text(
             "שלום! בחר פעולה מהתפריט הראשי:",
-            reply_markup=build_main_menu() # שימוש בפונקציה המיובאת
+            reply_markup=build_main_menu()
         )
 
 async def handle_main_keyboard_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -63,6 +63,7 @@ async def handle_main_keyboard_callback(update: Update, context: ContextTypes.DE
     await query.answer() 
     
     if query.data == "start_sell_flow":
+        # נניח שפקודה /sell מתחילה את ה-Conversation Handler
         await context.bot.send_message(
             chat_id=query.message.chat_id, 
             text="מתחילים את תהליך פרסום המכירה. אנא שלח את פרטי המודעה."
@@ -80,7 +81,7 @@ async def handle_main_keyboard_callback(update: Update, context: ContextTypes.DE
     # משחזר את המקלדת
     await query.message.reply_text(
         "בחר אפשרות נוספת:",
-        reply_markup=build_main_menu() # שימוש בפונקציה המיובאת
+        reply_markup=build_main_menu()
     )
 
 
@@ -89,7 +90,7 @@ async def show_main_keyboard_on_private_message(update: Update, context: Context
     if update.effective_chat.type == "private":
         await update.message.reply_text(
             "אנא בחר אפשרות מהתפריט הראשי:",
-            reply_markup=build_main_menu() # שימוש בפונקציה המיובאת
+            reply_markup=build_main_menu()
         )
 
 
@@ -102,11 +103,9 @@ async def delete_system_messages(update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def ask_relevance_job(context):
-    # לוגיקה זו תרוץ אוטומטית אם המשתנים והייבוא תקינים
     pass 
 
 async def publish_posts_job(context):
-    # לוגיקה זו תרוץ אוטומטית אם המשתנים והייבוא תקינים
     pass 
 
 
@@ -121,16 +120,14 @@ def main():
         logger.critical(f"Failed to initialize database: {e}")
         return
     
-    application = telegram.ext.Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder().token(BOT_TOKEN).build()
     
     # 1. Handlers בסיסיים
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("set_admin", set_admin_command)) 
     
-    # *** 2. Handler לטיפול בלחיצות כפתור במקלדת הקבועה ***
     application.add_handler(CallbackQueryHandler(handle_main_keyboard_callback, pattern="^(start_sell_flow|check_verification_status|help_menu_main)$"))
 
-    # 3. Handler גנרי למקלדת הקבועה
     application.add_handler(MessageHandler(
         filters.TEXT & filters.ChatType.PRIVATE & ~filters.COMMAND,
         show_main_keyboard_on_private_message
@@ -142,19 +139,18 @@ def main():
         block=True
     ))
 
-    # 4. Handlers מודולריים
-    application.add_handler(telegram.ext.ChatMemberHandler(handle_new_member, telegram.ext.ChatMemberHandler.CHAT_MEMBER))
+    # 2. Handlers מודולריים
+    application.add_handler(ChatMemberHandler(handle_new_member, ChatMemberHandler.CHAT_MEMBER))
     setup_verification_flow(application)
     setup_admin_handlers(application)
     setup_selling_handlers(application)
     
-    # 5. רישום משימות מתוזמנות
+    # 3. רישום משימות מתוזמנות
     try:
         schedule_weekly_posts(application.job_queue) 
     except Exception as e:
         logger.warning(f"Error registering jobs: {e}. Skipping internal jobs.")
     
-    # רישום הג'ובים הפנימיים כפאלבק
     job_queue = application.job_queue
     job_queue.run_daily(
         ask_relevance_job,
@@ -170,9 +166,9 @@ def main():
 
     logger.info("Scheduled jobs registered")
     
-    # 6. הפעלת Polling קשיח
+    # 4. הפעלת Polling קשיח
+    logger.info("Starting bot in Polling mode...")
     try:
-        logger.info("Starting bot in Polling mode...")
         application.run_polling(drop_pending_updates=True) 
         
     except telegram.error.TelegramError as e:
