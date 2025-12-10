@@ -1,5 +1,5 @@
 # ==================================
-# קובץ: handlers/utils.py (מלא וסופי - תיקון Naming של כפתור החזרה)
+# קובץ: handlers/utils.py (מלא וסופי - כולל is_user_approved)
 # ==================================
 import os
 import logging
@@ -7,7 +7,7 @@ from telegram import Bot, ChatPermissions, Update, InlineKeyboardButton, InlineK
 from telegram.ext import ContextTypes
 from typing import List
 
-from db_operations import get_user, ban_user_in_db
+from db_operations import get_user, ban_user_in_db # get_user חיוני לבדיקה
 
 logger = logging.getLogger(__name__)
 
@@ -27,24 +27,36 @@ DAY_NAMES = {
     0: "ראשון", 1: "שני", 2: "שלישי", 3: "רביעי", 4: "חמישי", 5: "שישי"
 }
 
-# --- בדיקות הרשאה ופעולות ---
+# --- בדיקות הרשאה ---
 def is_super_admin(user_id: int) -> bool:
+    """מחזיר True אם המשתמש הוא הסופר-אדמין."""
     return user_id == SUPER_ADMIN_ID
 
+# *** תיקון: הפונקציה החסרה שנדרשת על ידי selling.py ***
+def is_user_approved(user_id: int) -> bool:
+    """מחזיר True אם המשתמש מאושר ואינו חסום."""
+    user = get_user(user_id)
+    return user is not None and user.is_approved and not user.is_banned
+
+
 async def is_chat_admin(chat: Update.effective_chat, user: Update.effective_user) -> bool:
+    """בדיקה אם המשתמש הוא אדמין בצ'אט הנתון (כולל אדמין DB)."""
     user_db = get_user(user.id)
     if user_db and user_db.is_admin:
         return True
+    
     try:
         member = await chat.get_member(user.id)
         if member.status in ('administrator', 'creator'):
             return True
     except Exception:
         pass
+    
     return is_super_admin(user.id)
 
 # --- פעולות על הרשאות ---
 async def restrict_user_permissions(chat_id: int, user_id: int):
+    """מגביל משתמש להודעות טקסט בלבד ומונע מדיה."""
     permissions = ChatPermissions(
         can_send_messages=False,
         can_send_media_messages=False,
@@ -58,6 +70,7 @@ async def restrict_user_permissions(chat_id: int, user_id: int):
     await Bot(os.getenv("BOT_TOKEN")).restrict_chat_member(chat_id, user_id, permissions)
 
 async def grant_user_permissions(chat_id: int, user_id: int):
+    """נותן למשתמש הרשאות כתיבה מלאות."""
     permissions = ChatPermissions(
         can_send_messages=True,
         can_send_media_messages=True,
@@ -71,6 +84,7 @@ async def grant_user_permissions(chat_id: int, user_id: int):
     await Bot(os.getenv("BOT_TOKEN")).restrict_chat_member(chat_id, user_id, permissions)
 
 async def ban_user_globally(bot: Bot, user_id: int) -> bool:
+    """חוסם משתמש מכל קבוצות הקהילה ומעדכן DB."""
     success = True
     for chat_id in ALL_COMMUNITY_CHATS:
         try:
@@ -78,10 +92,13 @@ async def ban_user_globally(bot: Bot, user_id: int) -> bool:
         except Exception as e:
             logger.error(f"Failed to ban user {user_id} from chat {chat_id}: {e}")
             success = False
+            
     ban_user_in_db(user_id)
+    
     return success
 
 async def set_group_read_only(bot: Bot, chat_id: int, is_read_only: bool) -> bool:
+    """הופך קבוצה למצב קריאה בלבד או מחזיר הרשאות כתיבה."""
     if is_read_only:
         permissions = ChatPermissions(can_send_messages=False)
     else:
@@ -89,6 +106,7 @@ async def set_group_read_only(bot: Bot, chat_id: int, is_read_only: bool) -> boo
             can_send_messages=True,
             can_send_media_messages=True
         )
+        
     try:
         await bot.set_chat_permissions(chat_id, permissions)
         return True
@@ -98,8 +116,10 @@ async def set_group_read_only(bot: Bot, chat_id: int, is_read_only: bool) -> boo
 
 # --- פונקציות לתמיכה במקלדת ---
 async def check_user_status_and_reply(message: Update.message, context: ContextTypes.DEFAULT_TYPE):
+    """בדיקת סטטוס אימות ושליחת תגובה מתאימה (עבור המקלדת הצפה)."""
     user_id = message.chat_id
     user = get_user(user_id)
+    
     if not user:
         status_text = "❌ עדיין לא התחלת את תהליך האימות. אנא המתן עד שתשלח הודעה ראשונה לאחת מקבוצות הקהילה."
     elif user.is_banned:
@@ -108,22 +128,14 @@ async def check_user_status_and_reply(message: Update.message, context: ContextT
         status_text = "✅ אושר! יש לך הרשאות כתיבה מלאות."
     else:
         status_text = "⏳ ממתין לאישור מנהל. פרטיך נשלחו לבדיקה."
+        
     await message.reply_text(status_text)
     
-# *** תיקון Naming סופי: זו הפונקציה ש verification.py מצפה לה ***
-def build_back_button():
-    """בונה מקלדת עם כפתור חזרה בסיסי (בצורה של InlineKeyboardMarkup)."""
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("חזור לתפריט הראשי", callback_data="main_menu_return")]
-    ])
-
-# פונקציה זו דרושה כדי לפתור את שרשרת הייבוא (ייתכן וקובץ אחר משתמש בה)
 def add_back_button(keyboard: List[List[InlineKeyboardButton]]) -> List[List[InlineKeyboardButton]]:
     """מוסיף כפתור חזרה לתפריט ראשי למקלדת נתונה."""
     back_button = [InlineKeyboardButton("חזור לתפריט הראשי", callback_data="main_menu_return")]
     keyboard.append(back_button)
     return keyboard
-
 
 def build_main_menu():
     """בונה את המקלדת הצפה הראשית."""
