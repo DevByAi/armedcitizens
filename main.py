@@ -1,5 +1,5 @@
 # ==================================
-# קובץ: main.py (מכיל את כל Setup Handlers ו-Polling)
+# קובץ: main.py (מלא וסופי)
 # ==================================
 import os
 import logging
@@ -18,12 +18,12 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 
-# ייבוא קריטי: db_models, verification, admin, selling
 from db_models import init_db
 from handlers.verification import handle_new_member, setup_verification_flow
 from handlers.admin import setup_admin_handlers, set_admin_command 
 from handlers.selling import setup_selling_handlers
-from handlers.utils import check_user_status_and_reply, build_main_menu 
+# *** ייבוא נכון של פונקציות המקלדת ***
+from handlers.utils import check_user_status_and_reply, build_main_menu, build_main_menu_for_user
 
 # דרוש ייבוא של הפונקציה schedule_weekly_posts
 try:
@@ -54,7 +54,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_chat.type == "private":
         await update.message.reply_text(
             "שלום! בחר פעולה מהתפריט הראשי:",
-            reply_markup=build_main_menu()
+            reply_markup=build_main_menu_for_user(update.effective_user.id)
         )
 
 async def handle_main_keyboard_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -62,35 +62,47 @@ async def handle_main_keyboard_callback(update: Update, context: ContextTypes.DE
     query = update.callback_query
     await query.answer() 
     
+    user_id = query.from_user.id
+    
     if query.data == "start_sell_flow":
-        # נניח שפקודה /sell מתחילה את ה-Conversation Handler
-        await context.bot.send_message(
-            chat_id=query.message.chat_id, 
-            text="מתחילים את תהליך פרסום המכירה. אנא שלח את פרטי המודעה."
-        )
+        await context.bot.send_message(chat_id=query.message.chat_id, text="מתחילים את תהליך פרסום המכירה. אנא שלח את תוכן המודעה.")
         
     elif query.data == "check_verification_status":
         await check_user_status_and_reply(query.message, context)
         
     elif query.data == "help_menu_main":
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text="עזרה ראשית: פקודות ניהול נשלחות בנפרד. להלן אפשרויות המשתמש הראשי."
+        await context.bot.send_message(chat_id=query.message.chat_id, text="עזרה ראשית...")
+
+    elif query.data == "admin_pending_menu":
+        # לוגיקה לטיפול בתפריט הממתינים (צריך להיות ב-handlers/admin.py)
+        await context.bot.send_message(chat_id=query.message.chat_id, text="תפריט ממתינים נפתח.")
+    
+    elif query.data == "admin_stats_menu":
+        # לוגיקה לטיפול בסטטיסטיקות (צריך להיות ב-handlers/admin.py)
+        await context.bot.send_message(chat_id=query.message.chat_id, text="תפריט סטטיסטיקות נפתח.")
+    
+    elif query.data == "main_menu_return":
+        await query.message.edit_text(
+            "חזרת לתפריט הראשי:",
+            reply_markup=build_main_menu_for_user(user_id)
         )
-        
-    # משחזר את המקלדת
-    await query.message.reply_text(
-        "בחר אפשרות נוספת:",
-        reply_markup=build_main_menu()
-    )
+        return
+    
+    # *** התיקון ללולאת ה-Callback ***
+    # מונע שליחה כפולה של התפריט הראשי לאחר פעולה שאינה מעבר תפריט
+    if query.data not in ["main_menu_return", "admin_pending_menu", "admin_stats_menu"]:
+        await query.message.reply_text(
+            "בחר אפשרות נוספת:",
+            reply_markup=build_main_menu_for_user(user_id)
+        )
 
 
 async def show_main_keyboard_on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """שולח מחדש את המקלדת הצפה בכל הודעת טקסט לא מזוהה בפרטי."""
+    """שולח מחדש את המקלדת הצפה בכל הודעת טקסט לא מזוהה בפרטי (אפקט UI קבוע)."""
     if update.effective_chat.type == "private":
         await update.message.reply_text(
             "אנא בחר אפשרות מהתפריט הראשי:",
-            reply_markup=build_main_menu()
+            reply_markup=build_main_menu_for_user(update.effective_user.id)
         )
 
 
@@ -100,13 +112,6 @@ async def delete_system_messages(update: Update, context: ContextTypes.DEFAULT_T
             await update.message.delete()
         except Exception:
             logger.warning("Failed to delete system message. Check bot permissions.")
-
-
-async def ask_relevance_job(context):
-    pass 
-
-async def publish_posts_job(context):
-    pass 
 
 
 def main():
@@ -126,10 +131,12 @@ def main():
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("set_admin", set_admin_command)) 
     
-    application.add_handler(CallbackQueryHandler(handle_main_keyboard_callback, pattern="^(start_sell_flow|check_verification_status|help_menu_main)$"))
+    # *** 2. Handler ראשי ללחיצות כפתור (Callback) ***
+    application.add_handler(CallbackQueryHandler(handle_main_keyboard_callback, pattern="^(start_sell_flow|check_verification_status|help_menu_main|admin_pending_menu|admin_stats_menu|main_menu_return)$"))
 
+    # 3. Handler גנרי למקלדת הקבועה (בצ'אט פרטי, לא פקודות/Callbacks)
     application.add_handler(MessageHandler(
-        filters.TEXT & filters.ChatType.PRIVATE & ~filters.COMMAND,
+        filters.ChatType.PRIVATE & ~filters.COMMAND, # הסרת filters.TEXT כדי למנוע תגובה כפולה ל-Callback
         show_main_keyboard_on_private_message
     ))
 
@@ -139,34 +146,20 @@ def main():
         block=True
     ))
 
-    # 2. Handlers מודולריים
-    application.add_handler(ChatMemberHandler(handle_new_member, ChatMemberHandler.CHAT_MEMBER))
+    # 4. Handlers מודולריים
     setup_verification_flow(application)
     setup_admin_handlers(application)
     setup_selling_handlers(application)
     
-    # 3. רישום משימות מתוזמנות
+    # 5. רישום משימות מתוזמנות
     try:
         schedule_weekly_posts(application.job_queue) 
     except Exception as e:
-        logger.warning(f"Error registering jobs: {e}. Skipping internal jobs.")
+        logger.warning(f"Error registering jobs: {e}. Skipping job registration.")
     
-    job_queue = application.job_queue
-    job_queue.run_daily(
-        ask_relevance_job,
-        time=time(hour=9, minute=0, tzinfo=ISRAEL_TZ),
-        name="ask_relevance"
-    )
-    job_queue.run_repeating(
-        publish_posts_job,
-        interval=3600,
-        first=10,
-        name="publish_posts"
-    )
-
     logger.info("Scheduled jobs registered")
     
-    # 4. הפעלת Polling קשיח
+    # 6. הפעלת Polling קשיח
     logger.info("Starting bot in Polling mode...")
     try:
         application.run_polling(drop_pending_updates=True) 
