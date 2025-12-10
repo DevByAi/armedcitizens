@@ -1,13 +1,12 @@
 # ==================================
-# קובץ: handlers/utils.py (סופי)
+# קובץ: handlers/utils.py (מלא וסופי)
 # ==================================
 import os
 import logging
-from telegram import Bot, ChatPermissions, Update
+from telegram import Bot, ChatPermissions, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from typing import List
 
-# הייבוא צריך להיות מ-db_operations ולא ישירות מ-db_models
 from db_operations import get_user, ban_user_in_db
 
 logger = logging.getLogger(__name__)
@@ -16,7 +15,6 @@ logger = logging.getLogger(__name__)
 SUPER_ADMIN_ID = int(os.getenv("SUPER_ADMIN_ID", 0))
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHANNEL_ID") 
 SELL_GROUP_ID = os.getenv("SELL_GROUP_ID") 
-# רשימת צ'אטים מופרדת בפסיקים - חובה להמיר לרשימת אינטג'רים שליליים
 ALL_COMMUNITY_CHATS = []
 if os.getenv("ALL_COMMUNITY_CHATS"):
     try:
@@ -25,7 +23,6 @@ if os.getenv("ALL_COMMUNITY_CHATS"):
         logger.error("ALL_COMMUNITY_CHATS must contain comma-separated integer IDs.")
 
 # --- קבועים ---
-# ימי השבוע (כפי שהוגדר ב-DB: 0=Sunday, 1=Monday, ..., 5=Friday)
 DAY_NAMES = {
     0: "ראשון", 1: "שני", 2: "שלישי", 3: "רביעי", 4: "חמישי", 5: "שישי"
 }
@@ -42,7 +39,6 @@ async def is_chat_admin(chat: Update.effective_chat, user: Update.effective_user
     if user_db and user_db.is_admin:
         return True
     
-    # בדיקה אם הוא אדמין בצ'אט
     try:
         member = await chat.get_member(user.id)
         if member.status in ('administrator', 'creator'):
@@ -50,7 +46,7 @@ async def is_chat_admin(chat: Update.effective_chat, user: Update.effective_user
     except Exception:
         pass
     
-    return is_super_admin(user.id) # פאלבק לסופר אדמין
+    return is_super_admin(user.id)
 
 # --- פעולות על הרשאות ---
 async def restrict_user_permissions(chat_id: int, user_id: int):
@@ -65,7 +61,6 @@ async def restrict_user_permissions(chat_id: int, user_id: int):
         can_invite_users=False,
         can_pin_messages=False
     )
-    # נשתמש ב-Bot ישירות כדי לבצע את הפעולה
     await Bot(os.getenv("BOT_TOKEN")).restrict_chat_member(chat_id, user_id, permissions)
 
 async def grant_user_permissions(chat_id: int, user_id: int):
@@ -86,7 +81,6 @@ async def ban_user_globally(bot: Bot, user_id: int) -> bool:
     """חוסם משתמש מכל קבוצות הקהילה ומעדכן DB."""
     success = True
     
-    # 1. חסימה מכל הקבוצות
     for chat_id in ALL_COMMUNITY_CHATS:
         try:
             await bot.ban_chat_member(chat_id, user_id)
@@ -94,7 +88,6 @@ async def ban_user_globally(bot: Bot, user_id: int) -> bool:
             logger.error(f"Failed to ban user {user_id} from chat {chat_id}: {e}")
             success = False
             
-    # 2. סימון ב-DB
     ban_user_in_db(user_id)
     
     return success
@@ -104,7 +97,6 @@ async def set_group_read_only(bot: Bot, chat_id: int, is_read_only: bool) -> boo
     if is_read_only:
         permissions = ChatPermissions(can_send_messages=False)
     else:
-        # הרשאות בסיס נחוצות כדי לאפשר כתיבה
         permissions = ChatPermissions(
             can_send_messages=True,
             can_send_media_messages=True
@@ -139,3 +131,12 @@ def build_back_button():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("חזור לתפריט הראשי", callback_data="main_menu_return")]
     ])
+
+def build_main_menu():
+    """בונה את המקלדת הצפה הראשית."""
+    keyboard = [
+        [InlineKeyboardButton("📦 מכירה חדשה", callback_data="start_sell_flow")],
+        [InlineKeyboardButton("👤 מצב אימות", callback_data="check_verification_status")],
+        [InlineKeyboardButton("❓ עזרה ופקודות", callback_data="help_menu_main")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
