@@ -1,171 +1,141 @@
+# ==================================
+# קובץ: handlers/utils.py (סופי)
+# ==================================
 import os
 import logging
-from telegram import Bot, Chat, ChatMember, ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ChatMemberStatus
-from db_operations import get_user, ban_user_in_db
+from telegram import Bot, ChatPermissions, Update
+from telegram.ext import ContextTypes
 from typing import List
-from enum import Enum
 
-
-class UserRole(Enum):
-    SUPER_ADMIN = "super_admin"
-    ADMIN = "admin"
-    APPROVED_USER = "approved_user"
-    PENDING_USER = "pending_user"
-
-DAY_NAMES = {0: "ראשון", 1: "שני", 2: "שלישי", 3: "רביעי", 4: "חמישי", 5: "שישי"}
+# הייבוא צריך להיות מ-db_operations ולא ישירות מ-db_models
+from db_operations import get_user, ban_user_in_db
 
 logger = logging.getLogger(__name__)
 
-# קבלת רשימת ה-IDs של הקבוצות מהסביבה
-ALL_COMMUNITY_CHATS = [int(i) for i in os.getenv("ALL_COMMUNITY_CHATS", "").split(',') if i]
-
-# ערוץ הניהול לקבלת בקשות אימות
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")
-
-# מנהל ראשי של המערכת
-SUPER_ADMIN_ID = os.getenv("SUPER_ADMIN_ID", "")
-
-def is_super_admin(user_id: int) -> bool:
-    """Check if user is the super admin."""
-    if not SUPER_ADMIN_ID:
-        return False
-    return str(user_id) == SUPER_ADMIN_ID
-
-async def restrict_user_permissions(chat_id: int, user_id: int, can_write: bool = False):
-    permissions = ChatPermissions(can_send_messages=can_write)
+# --- משתני סביבה גלובליים (חובה להגדרה ב-Render) ---
+SUPER_ADMIN_ID = int(os.getenv("SUPER_ADMIN_ID", 0))
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHANNEL_ID") 
+SELL_GROUP_ID = os.getenv("SELL_GROUP_ID") 
+# רשימת צ'אטים מופרדת בפסיקים - חובה להמיר לרשימת אינטג'רים שליליים
+ALL_COMMUNITY_CHATS = []
+if os.getenv("ALL_COMMUNITY_CHATS"):
     try:
-        await Bot(os.getenv("BOT_TOKEN")).restrict_chat_member(
-            chat_id=chat_id,
-            user_id=user_id,
-            permissions=permissions,
-        )
+        ALL_COMMUNITY_CHATS = [int(cid.strip()) for cid in os.getenv("ALL_COMMUNITY_CHATS").split(',') if cid.strip()]
+    except ValueError:
+        logger.error("ALL_COMMUNITY_CHATS must contain comma-separated integer IDs.")
+
+# --- קבועים ---
+# ימי השבוע (כפי שהוגדר ב-DB: 0=Sunday, 1=Monday, ..., 5=Friday)
+DAY_NAMES = {
+    0: "ראשון", 1: "שני", 2: "שלישי", 3: "רביעי", 4: "חמישי", 5: "שישי"
+}
+
+
+# --- בדיקות הרשאה ---
+def is_super_admin(user_id: int) -> bool:
+    """מחזיר True אם המשתמש הוא הסופר-אדמין."""
+    return user_id == SUPER_ADMIN_ID
+
+async def is_chat_admin(chat: Update.effective_chat, user: Update.effective_user) -> bool:
+    """בדיקה אם המשתמש הוא אדמין בצ'אט הנתון (כולל אדמין DB)."""
+    user_db = get_user(user.id)
+    if user_db and user_db.is_admin:
         return True
-    except Exception as e:
-        logger.warning(f"Failed to set permissions for user {user_id} in {chat_id}: {e}")
-        return False
+    
+    # בדיקה אם הוא אדמין בצ'אט
+    try:
+        member = await chat.get_member(user.id)
+        if member.status in ('administrator', 'creator'):
+            return True
+    except Exception:
+        pass
+    
+    return is_super_admin(user.id) # פאלבק לסופר אדמין
+
+# --- פעולות על הרשאות ---
+async def restrict_user_permissions(chat_id: int, user_id: int):
+    """מגביל משתמש להודעות טקסט בלבד ומונע מדיה."""
+    permissions = ChatPermissions(
+        can_send_messages=False,
+        can_send_media_messages=False,
+        can_send_polls=False,
+        can_send_other_messages=False,
+        can_add_web_page_previews=False,
+        can_change_info=False,
+        can_invite_users=False,
+        can_pin_messages=False
+    )
+    # נשתמש ב-Bot ישירות כדי לבצע את הפעולה
+    await Bot(os.getenv("BOT_TOKEN")).restrict_chat_member(chat_id, user_id, permissions)
 
 async def grant_user_permissions(chat_id: int, user_id: int):
-    return await restrict_user_permissions(chat_id, user_id, can_write=True)
+    """נותן למשתמש הרשאות כתיבה מלאות."""
+    permissions = ChatPermissions(
+        can_send_messages=True,
+        can_send_media_messages=True,
+        can_send_polls=True,
+        can_send_other_messages=True,
+        can_add_web_page_previews=True,
+        can_change_info=False,
+        can_invite_users=True,
+        can_pin_messages=False
+    )
+    await Bot(os.getenv("BOT_TOKEN")).restrict_chat_member(chat_id, user_id, permissions)
 
-async def is_user_approved(telegram_id: int) -> bool:
-    user = get_user(telegram_id)
-    return user is not None and user.is_approved and not user.is_banned
-
-async def is_chat_admin(chat: Chat, user) -> bool:
-    """Check if user is an admin (super admin, DB admin, or Telegram group admin)."""
-    if hasattr(user, 'is_bot') and user.is_bot:
-        return False
+async def ban_user_globally(bot: Bot, user_id: int) -> bool:
+    """חוסם משתמש מכל קבוצות הקהילה ומעדכן DB."""
+    success = True
     
-    user_id = user.id if hasattr(user, 'id') else user
-    
-    # Check if super admin
-    if is_super_admin(user_id):
-        return True
-    
-    # Check if admin in database
-    db_user = get_user(user_id)
-    if db_user and db_user.is_admin:
-        return True
-    
-    # Check if Telegram group admin
-    try:
-        member = await chat.get_member(user_id)
-        return member.status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]
-    except Exception:
-        return False
-
-async def ban_user_globally(bot: Bot, target_user_id: int) -> bool:
-    ban_user_in_db(target_user_id)
-    success_count = 0
+    # 1. חסימה מכל הקבוצות
     for chat_id in ALL_COMMUNITY_CHATS:
         try:
-            await bot.ban_chat_member(chat_id, target_user_id)
-            success_count += 1
-        except Exception:
-            pass 
-    return success_count > 0
+            await bot.ban_chat_member(chat_id, user_id)
+        except Exception as e:
+            logger.error(f"Failed to ban user {user_id} from chat {chat_id}: {e}")
+            success = False
+            
+    # 2. סימון ב-DB
+    ban_user_in_db(user_id)
+    
+    return success
 
 async def set_group_read_only(bot: Bot, chat_id: int, is_read_only: bool) -> bool:
-    permissions = ChatPermissions(can_send_messages=not is_read_only)
+    """הופך קבוצה למצב קריאה בלבד או מחזיר הרשאות כתיבה."""
+    if is_read_only:
+        permissions = ChatPermissions(can_send_messages=False)
+    else:
+        # הרשאות בסיס נחוצות כדי לאפשר כתיבה
+        permissions = ChatPermissions(
+            can_send_messages=True,
+            can_send_media_messages=True
+        )
+        
     try:
         await bot.set_chat_permissions(chat_id, permissions)
         return True
     except Exception as e:
-        logger.error(f"Failed to set group permissions for chat {chat_id}: {e}")
+        logger.error(f"Failed to {'lock' if is_read_only else 'unlock'} chat {chat_id}: {e}")
         return False
 
-
-def get_user_role(user_id: int) -> UserRole:
-    """Determine user's role based on their status."""
-    if is_super_admin(user_id):
-        return UserRole.SUPER_ADMIN
-    
+# --- פונקציות לתמיכה במקלדת ---
+async def check_user_status_and_reply(message: Update.message, context: ContextTypes.DEFAULT_TYPE):
+    """בדיקת סטטוס אימות ושליחת תגובה מתאימה (עבור המקלדת הצפה)."""
+    user_id = message.chat_id
     user = get_user(user_id)
-    if user:
-        if user.is_admin:
-            return UserRole.ADMIN
-        if user.is_approved and not user.is_banned:
-            return UserRole.APPROVED_USER
     
-    return UserRole.PENDING_USER
-
-
-def build_main_menu(user_id: int) -> InlineKeyboardMarkup:
-    """Build role-appropriate main menu keyboard."""
-    role = get_user_role(user_id)
-    keyboard = []
-    
-    if role == UserRole.SUPER_ADMIN:
-        keyboard = [
-            [InlineKeyboardButton("📋 פקודות אדמין", callback_data="admin_help")],
-            [InlineKeyboardButton("📝 משתמשים ממתינים", callback_data="pending_users")],
-            [InlineKeyboardButton("📦 מודעות ממתינות", callback_data="pending_posts")],
-            [InlineKeyboardButton("📤 שלח ממתינים לערוץ", callback_data="send_pending")],
-            [InlineKeyboardButton("👥 רשימת מנהלים", callback_data="list_admins")],
-            [InlineKeyboardButton("🧪 בדיקת ערוץ ניהול", callback_data="test_admin")]
-        ]
-    elif role == UserRole.ADMIN:
-        keyboard = [
-            [InlineKeyboardButton("📋 פקודות אדמין", callback_data="admin_help")],
-            [InlineKeyboardButton("📝 משתמשים ממתינים", callback_data="pending_users")],
-            [InlineKeyboardButton("📦 מודעות ממתינות", callback_data="pending_posts")],
-            [InlineKeyboardButton("📤 שלח ממתינים לערוץ", callback_data="send_pending")]
-        ]
-    elif role == UserRole.APPROVED_USER:
-        keyboard = [
-            [InlineKeyboardButton("📦 יצירת פוסט מכירה", callback_data="create_sell")],
-            [InlineKeyboardButton("📋 המודעות שלי", callback_data="my_posts")]
-        ]
+    if not user:
+        status_text = "❌ עדיין לא התחלת את תהליך האימות. אנא המתן עד שתשלח הודעה ראשונה לאחת מקבוצות הקהילה."
+    elif user.is_banned:
+        status_text = "🚫 המשתמש חסום. אין אפשרות להצטרף."
+    elif user.is_approved:
+        status_text = "✅ אושר! יש לך הרשאות כתיבה מלאות."
     else:
-        keyboard = [
-            [InlineKeyboardButton("✅ התחל אימות", callback_data="start_verify")]
-        ]
+        status_text = "⏳ ממתין לאישור מנהל. פרטיך נשלחו לבדיקה."
+        
+    await message.reply_text(status_text)
     
-    return InlineKeyboardMarkup(keyboard)
-
-
-def build_back_button() -> InlineKeyboardMarkup:
-    """Build a simple back to menu button."""
-    return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 חזרה לתפריט", callback_data="main_menu")]])
-
-
-def add_back_button(keyboard_list: list) -> list:
-    """Add back to menu button to existing keyboard list."""
-    keyboard_list.append([InlineKeyboardButton("🏠 חזרה לתפריט", callback_data="main_menu")])
-    return keyboard_list
-
-
-def get_menu_text(user_id: int) -> str:
-    """Get appropriate menu text based on user role."""
-    role = get_user_role(user_id)
-    
-    if role == UserRole.SUPER_ADMIN:
-        return "שלום מנהל ראשי! בחר פעולה:"
-    elif role == UserRole.ADMIN:
-        return "שלום מנהל! בחר פעולה:"
-    elif role == UserRole.APPROVED_USER:
-        return "שלום! בחר פעולה:"
-    else:
-        return "ברוך הבא! כדי לקבל גישה לקהילה, עליך לעבור תהליך אימות."
-
+def build_back_button():
+    """בונה כפתור חזור בסיסי למקלדות משניות."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("חזור לתפריט הראשי", callback_data="main_menu_return")]
+    ])
